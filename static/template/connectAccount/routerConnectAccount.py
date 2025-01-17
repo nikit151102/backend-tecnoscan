@@ -236,4 +236,4 @@ async def update_user(request: UpdateUserModel, Authorization: str = Header(None
         print("Ошибка изменения данных пользователя:", str(e))
         return JSONResponse(
             content={"code": 500, "message": "Внутренняя ошибка сервера."}, status_code=500
-        )
+        )backendTecnoScan
