@@ -9,9 +9,9 @@ from ..randomPassword import generate_temp_password
 from sqlalchemy.future import select
 from .setModels import ConnectModel, registrationModel
 from .setModels import UpdateUserModel
+import jwt
 
 personal_account = APIRouter()
-
 
 @personal_account.post("/user")
 async def connection(request: ConnectModel):
@@ -34,21 +34,30 @@ async def connection(request: ConnectModel):
                     content={"code": 404, "message": "Пользователь не найден."}, status_code=404
                 )
 
+            # Расшифровка пароля
             decrypted_password = decrypt({"iv": client.iv, "content": client.password})
             print("Расшифрованный пароль:", decrypted_password)
 
             if decrypted_password == password:
                 payload_client = {
-                    "user_id": str(client.id),
-                    "LastName": client.lastname,
-                    "FirstName": client.firstname,
-                    "MiddleName": client.middlename,
-                    "Email": client.email,
-                    "Phone": client.phone,
+                    "id": str(client.id),  
+                    "lastname": client.lastname,
+                    "firstname": client.firstname,
+                    "middlename": client.middlename,
+                    "email": client.email,
+                    "phone": client.phone,
+                    "login": client.login
                 }
-                token_client = generateToken(payload_client)
+
+                token_client = jwt.encode(payload_client, SECRET_KEY, algorithm="HS256")
+
                 return JSONResponse(
-                    content={"code": 202, "userId": f"{client.id}", "token": token_client}, status_code=202
+                    content={
+                        "code": 202,
+                        "userId": str(client.id), 
+                        "token": token_client
+                    },
+                    status_code=202
                 )
             else:
                 return JSONResponse(
@@ -61,7 +70,7 @@ async def connection(request: ConnectModel):
             )
 
 
-@personal_account.put("/registration")
+@personal_account.post("/registration")
 async def create(request: registrationModel):
     async with AsyncSession(engine_a) as session:
         login = request.Login
@@ -74,10 +83,10 @@ async def create(request: registrationModel):
             )
 
         try:
-            existing_user = await session.execute(
+            result = await session.execute(
                 select(User).filter((User.login == login) | (User.email == email))
             )
-            existing_user = existing_user.scalar()
+            existing_user = result.scalar()
 
             if existing_user:
                 return JSONResponse(
@@ -100,18 +109,33 @@ async def create(request: registrationModel):
             )
             session.add(New_user)
             await session.commit()
+            await session.refresh(New_user) 
+
+            token_data = {
+                "id": str(New_user.id),
+                "login": New_user.login,
+                "email": New_user.email,
+                "lastname": New_user.lastname,
+                "firstname": New_user.firstname,
+                "middlename": New_user.middlename,
+                "phone": New_user.phone,
+            }
+            token = jwt.encode(token_data, SECRET_KEY, algorithm="HS256")
 
             return JSONResponse(
-                content={"code": 201, "message": "Пользователь успешно зарегистрирован."}, status_code=201
+                content={
+                    "code": 201,
+                    "message": "Пользователь успешно зарегистрирован.",
+                    "id": str(New_user.id),  
+                    "token": token
+                },
+                status_code=201
             )
         except Exception as e:
             print("Ошибка регистрации:", str(e))
             return JSONResponse(
                 content={"code": 500, "message": "Внутренняя ошибка сервера."}, status_code=500
             )
-
-
-
 
 # Получение данных пользователя
 @personal_account.get("/user")
@@ -121,10 +145,27 @@ async def get_user_data(Authorization: str = Header(None)):
             content={"code": 401, "message": "Токен авторизации обязателен."}, status_code=401
         )
 
-    try:
-        decoded_token = decryptToken(Authorization)
-        user_id = decoded_token.get("user_id")
+    # Проверка формата Bearer токена
+    if not Authorization.startswith("Bearer "):
+        return JSONResponse(
+            content={"code": 401, "message": "Неверный формат токена. Токен должен начинаться с 'Bearer '."},
+            status_code=401,
+        )
 
+    # Извлечение токена из заголовка
+    token = Authorization[7:]  # Убираем "Bearer "
+
+    try:
+        # Расшифровка токена
+        decoded_token = decryptToken(token)
+        user_id = decoded_token.get("id")
+
+        if not user_id:
+            return JSONResponse(
+                content={"code": 401, "message": "Токен недействителен или истек."}, status_code=401
+            )
+
+        # Получение данных пользователя из базы
         async with AsyncSession(engine_a) as session:
             user = await session.execute(select(User).filter(User.id == user_id))
             user = user.scalar()
@@ -236,4 +277,97 @@ async def update_user(request: UpdateUserModel, Authorization: str = Header(None
         print("Ошибка изменения данных пользователя:", str(e))
         return JSONResponse(
             content={"code": 500, "message": "Внутренняя ошибка сервера."}, status_code=500
-        )backendTecnoScan
+        )
+
+
+
+
+from yookassa import Configuration, Payment
+import uuid
+
+# Настройка идентификатора магазина и секретного ключа
+Configuration.account_id = '1015227'
+Configuration.secret_key = 'test_mTsXdhSifwi6cApEwep6R0hMRMOHqWcGaWv3CrDSVis'
+
+
+@personal_account.post("/teatPay")
+async def teatPay():
+    try:
+        idempotence_key = str(uuid.uuid4())
+
+        payment = Payment.create({
+            "amount": {
+                "value": "2.00",
+                "currency": "RUB"
+            },
+            "confirmation": {
+                "type": "embedded"
+            },
+            "capture": True,
+            "description": "Заказ №72"
+        }, idempotence_key)
+
+        confirmation_token = payment.confirmation.confirmation_token
+        return confirmation_token
+
+    except Exception as e:
+        # Обработка ошибок и возврат сообщения об ошибке
+        return {"error": str(e)}
+
+
+from fastapi import FastAPI, Request, HTTPException
+import json
+import hmac
+import hashlib
+import base64
+
+app = FastAPI()
+
+# Ваш секретный ключ для проверки подписи
+SECRET_KEY = 'test_mTsXdhSifwi6cApEwep6R0hMRMOHqWcGaWv3CrDSVis'
+
+# Функция для проверки подписи уведомлений
+def verify_signature(payload: str, signature: str) -> bool:
+    """Проверка подписи уведомления от ЮKassa"""
+    computed_signature = base64.b64encode(
+        hmac.new(SECRET_KEY.encode('utf-8'), payload.encode('utf-8'), hashlib.sha256).digest()
+    ).decode('utf-8')
+
+    return hmac.compare_digest(computed_signature, signature)
+
+@app.post("/webhook")
+async def handle_payment_status(request: Request):
+    try:
+        # Получаем тело запроса (payload)
+        payload = await request.body()
+        signature = request.headers.get('X-Ya-Notification-Signature')
+
+        # Проверка подписи
+        if not signature or not verify_signature(payload.decode('utf-8'), signature):
+            raise HTTPException(status_code=400, detail="Invalid signature")
+
+        # Парсим JSON payload
+        data = json.loads(payload)
+
+        # Извлекаем событие и информацию о платеже
+        event = data.get('event')
+        payment_id = data['object']['id']
+        status = data['object']['status']
+
+        # Обработка событий в зависимости от статуса платежа
+        if status == "succeeded":
+            print(f"Платеж {payment_id} успешен!")
+            # Например, обновите заказ в базе данных
+
+        elif status == "canceled":
+            print(f"Платеж {payment_id} отменён.")
+            # Обработка отмены платежа
+
+        elif status == "waiting_for_capture":
+            print(f"Платеж {payment_id} ожидает подтверждения.")
+            # Обработка состояния ожидания
+
+        return {"status": "received"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
