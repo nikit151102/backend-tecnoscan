@@ -18,7 +18,7 @@ class Settings:
 # settings.POSTGRES_PORT = 5432
 # settings.POSTGRES_PASSWORD = 'root'
 # settings.POSTGRES_USER = 'root' 
-# settings.POSTGRES_DB = 'vitkon'
+# settings.POSTGRES_DB = 'test'
     
 settings = Settings()
 settings.POSTGRES_HOST = 'localhost' 

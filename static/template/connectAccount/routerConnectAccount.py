@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from database.database_app import engine_a
 from models_db.models_request import User
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..criptoPassword import decrypt, encrypt
+from ..criptoPassword import decrypt, encrypt,secretKey
 from ..randomPassword import generate_temp_password
 from sqlalchemy.future import select
 from .setModels import ConnectModel, registrationModel
@@ -49,7 +49,7 @@ async def connection(request: ConnectModel):
                     "login": client.login
                 }
 
-                token_client = jwt.encode(payload_client, SECRET_KEY, algorithm="HS256")
+                token_client = jwt.encode(payload_client, secretKey, algorithm="HS256")
 
                 return JSONResponse(
                     content={
@@ -120,7 +120,7 @@ async def create(request: registrationModel):
                 "middlename": New_user.middlename,
                 "phone": New_user.phone,
             }
-            token = jwt.encode(token_data, SECRET_KEY, algorithm="HS256")
+            token = jwt.encode(token_data, secretKey, algorithm="HS256")
 
             return JSONResponse(
                 content={
@@ -137,27 +137,17 @@ async def create(request: registrationModel):
                 content={"code": 500, "message": "Внутренняя ошибка сервера."}, status_code=500
             )
 
-# Получение данных пользователя
-@personal_account.get("/user")
-async def get_user_data(Authorization: str = Header(None)):
-    if not Authorization:
-        return JSONResponse(
-            content={"code": 401, "message": "Токен авторизации обязателен."}, status_code=401
-        )
 
-    # Проверка формата Bearer токена
-    if not Authorization.startswith("Bearer "):
-        return JSONResponse(
-            content={"code": 401, "message": "Неверный формат токена. Токен должен начинаться с 'Bearer '."},
-            status_code=401,
-        )
+from fastapi.security import OAuth2PasswordBearer
 
-    # Извлечение токена из заголовка
-    token = Authorization[7:]  # Убираем "Bearer "
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+@personal_account.get("/personal_account/user")
+async def get_user_data(token: str = Depends(oauth2_scheme)):
     try:
         # Расшифровка токена
         decoded_token = decryptToken(token)
+        print("decoded_token",decoded_token)
         user_id = decoded_token.get("id")
 
         if not user_id:
@@ -197,17 +187,24 @@ async def get_user_data(Authorization: str = Header(None)):
             content={"code": 500, "message": "Внутренняя ошибка сервера."}, status_code=500
         )
 
+from fastapi import Depends
+
+@personal_account.get("/debug/token")
+async def debug_token(token: str = Depends(oauth2_scheme)):
+    return {"received_token": token}
+
 
 # Удаление пользователя
 @personal_account.delete("/user")
-async def delete_user(Authorization: str = Header(None)):
-    if not Authorization:
+async def delete_user(token: str = Depends(oauth2_scheme)):
+    
+    if not token:
         return JSONResponse(
             content={"code": 401, "message": "Токен авторизации обязателен."}, status_code=401
         )
 
     try:
-        decoded_token = decryptToken(Authorization)
+        decoded_token = decryptToken(token)
         user_id = decoded_token.get("user_id")
 
         async with AsyncSession(engine_a) as session:
@@ -280,94 +277,3 @@ async def update_user(request: UpdateUserModel, Authorization: str = Header(None
         )
 
 
-
-
-from yookassa import Configuration, Payment
-import uuid
-
-# Настройка идентификатора магазина и секретного ключа
-Configuration.account_id = '1015227'
-Configuration.secret_key = 'test_mTsXdhSifwi6cApEwep6R0hMRMOHqWcGaWv3CrDSVis'
-
-
-@personal_account.post("/teatPay")
-async def teatPay():
-    try:
-        idempotence_key = str(uuid.uuid4())
-
-        payment = Payment.create({
-            "amount": {
-                "value": "2.00",
-                "currency": "RUB"
-            },
-            "confirmation": {
-                "type": "embedded"
-            },
-            "capture": True,
-            "description": "Заказ №72"
-        }, idempotence_key)
-
-        confirmation_token = payment.confirmation.confirmation_token
-        return confirmation_token
-
-    except Exception as e:
-        # Обработка ошибок и возврат сообщения об ошибке
-        return {"error": str(e)}
-
-
-from fastapi import FastAPI, Request, HTTPException
-import json
-import hmac
-import hashlib
-import base64
-
-app = FastAPI()
-
-# Ваш секретный ключ для проверки подписи
-SECRET_KEY = 'test_mTsXdhSifwi6cApEwep6R0hMRMOHqWcGaWv3CrDSVis'
-
-# Функция для проверки подписи уведомлений
-def verify_signature(payload: str, signature: str) -> bool:
-    """Проверка подписи уведомления от ЮKassa"""
-    computed_signature = base64.b64encode(
-        hmac.new(SECRET_KEY.encode('utf-8'), payload.encode('utf-8'), hashlib.sha256).digest()
-    ).decode('utf-8')
-
-    return hmac.compare_digest(computed_signature, signature)
-
-@app.post("/webhook")
-async def handle_payment_status(request: Request):
-    try:
-        # Получаем тело запроса (payload)
-        payload = await request.body()
-        signature = request.headers.get('X-Ya-Notification-Signature')
-
-        # Проверка подписи
-        if not signature or not verify_signature(payload.decode('utf-8'), signature):
-            raise HTTPException(status_code=400, detail="Invalid signature")
-
-        # Парсим JSON payload
-        data = json.loads(payload)
-
-        # Извлекаем событие и информацию о платеже
-        event = data.get('event')
-        payment_id = data['object']['id']
-        status = data['object']['status']
-
-        # Обработка событий в зависимости от статуса платежа
-        if status == "succeeded":
-            print(f"Платеж {payment_id} успешен!")
-            # Например, обновите заказ в базе данных
-
-        elif status == "canceled":
-            print(f"Платеж {payment_id} отменён.")
-            # Обработка отмены платежа
-
-        elif status == "waiting_for_capture":
-            print(f"Платеж {payment_id} ожидает подтверждения.")
-            # Обработка состояния ожидания
-
-        return {"status": "received"}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
