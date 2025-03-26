@@ -2,11 +2,31 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
 from static.template.verifications.isVerification import isVerification
-from static.template.connectAccount.routerConnectAccount import personal_account
-from fastapi.openapi.models import APIKey, APIKeyIn
+from static.routers import authUser, user, transmissionType, engineVolume, carBrand, application
 from fastapi.openapi.utils import get_openapi
+from database.database_app import create_db_if_not_exists, create_tables 
+import subprocess
+
+def run_migrations():
+    """Выполнить миграции перед запуском приложения."""
+    try:
+        subprocess.run(
+            ["alembic", "upgrade", "head"], 
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        print("Миграции успешно выполнены.")
+    except subprocess.CalledProcessError as e:
+        print(f"Ошибка при выполнении миграций: {e.stderr}")
+
+
+create_db_if_not_exists()
+create_tables()
+
+run_migrations()
+
 
 app = FastAPI()
 
@@ -23,8 +43,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(isVerification, prefix="/Verification", tags=["Verification client"])
-app.include_router(personal_account, prefix="/personal_account")
+# app.include_router(isVerification, prefix="/verification", tags=["Подтверждение клиента"])
+app.include_router(authUser.router, prefix="/authUser", tags=["Авторизация пользователя"])
+app.include_router(user.router, prefix="/profile", tags=["Профиль"])
+app.include_router(transmissionType.router, prefix="/transmissionType", tags=["Тип трансмиссии"])
+app.include_router(carBrand.router, prefix="/carBrand", tags=["Марка автомобиля"])
+app.include_router(engineVolume.router, prefix="/engineVolume", tags=["Объем двигателя"])
+app.include_router(application.router, prefix="/application", tags=["Заявка"])
+
 
 @app.get("/")
 async def read_root():
@@ -49,7 +75,7 @@ def custom_openapi():
         "OAuth2PasswordBearer": {
             "type": "apiKey",
             "in": "header",
-            "name": "Authorization",  # Теперь вводится только токен
+            "name": "Authorization", 
         }
     }
     app.openapi_schema = openapi_schema

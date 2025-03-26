@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi import Request
 from database.database_app import get_session,engine_a
-from models_db.models_request import User
+from models import User
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
