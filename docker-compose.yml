@@ -1,0 +1,23 @@
+services:
+  project:
+    image: tecnoscan_back 
+    build:
+      dockerfile: Dockerfile-backend
+    ports:
+      - "5001:5001"
+    volumes:
+      - .:/app
+
+  db:
+    image: postgres
+    restart: always
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "8080:8080"
