@@ -51,7 +51,6 @@ app.include_router(carBrand.router, prefix="/carBrand", tags=["Марка авт
 app.include_router(engineVolume.router, prefix="/engineVolume", tags=["Объем двигателя"])
 app.include_router(application.router, prefix="/application", tags=["Заявка"])
 
-
 @app.get("/")
 async def read_root():
     return {"Hello": "World"}
