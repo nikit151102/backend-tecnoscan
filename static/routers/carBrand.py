@@ -75,3 +75,57 @@ async def delete_car_brand_route(brand_id: UUID):
         if success:
             return {"message": "Марка автомобиля успешно удален"}
         raise HTTPException(status_code=404, detail="Марка автомобиля не найден")
+
+
+from fastapi import APIRouter, HTTPException, File, UploadFile, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from uuid import UUID
+from models import CarBrand
+import pandas as pd
+from io import BytesIO
+from database.database_app import get_session
+
+async def create_car_brand(db: AsyncSession, name: str) -> CarBrand:
+    if isinstance(name, (int, float)):
+        name = str(name)
+
+    existing_car_brand = await db.execute(select(CarBrand).filter(CarBrand.name == name))
+    existing_car_brand = existing_car_brand.scalar_one_or_none()
+
+    if existing_car_brand:
+        return None 
+
+    car_brand = CarBrand(name=name)
+    db.add(car_brand)
+    await db.commit()
+    await db.refresh(car_brand)
+    return car_brand
+
+@router.post("/upload", summary="Загрузка Excel файла с марками автомобилей.")
+async def upload_car_brands(file: UploadFile = File(...), session: AsyncSession = Depends(get_session)):
+    try:
+        file_contents = await file.read()
+        df = pd.read_excel(BytesIO(file_contents), engine='openpyxl')
+
+        if df.empty or df.shape[1] < 1:
+            raise HTTPException(status_code=400, detail="Файл пуст или не содержит данных.")
+
+        brand_names = df.iloc[:, 0].dropna().apply(str) 
+        created_brands = []
+        existing_brands_count = 0
+        for name in brand_names:
+            car_brand = await create_car_brand(session, name)
+            if car_brand:
+                created_brands.append(car_brand)
+            else:
+                existing_brands_count += 1
+
+        added_brands_count = len(created_brands)
+
+        return {
+            "message": f"Успешно добавлено {added_brands_count} марок автомобилей, {existing_brands_count} марок уже существовали.",
+            "added": added_brands_count,
+            "existing": existing_brands_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при обработке файла: {str(e)}")
