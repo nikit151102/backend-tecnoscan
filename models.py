@@ -20,56 +20,76 @@ class User(Base):
     password = Column(String(255))
     iv = Column(String(255))
 
+    cars = relationship("Car", back_populates="user", cascade="all, delete-orphan")
     applications = relationship("Application", back_populates="user", cascade="all, delete-orphan")
+
+    class Config:
+        orm_mode = True
 
 
 class TransmissionType(Base):
-    __tablename__ = 'transmission_types'  # Таблица должна называться transmission_types
+    __tablename__ = 'transmission_types'
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String)
 
-    applications = relationship("Application", back_populates="transmission_type")
+    cars = relationship("Car", back_populates="transmission_type")
+
     class Config:
-            orm_mode = True
+        orm_mode = True
 
 class CarBrand(Base):
-    __tablename__ = "car_brand"  # Марки автомобиля
+    __tablename__ = "car_brand"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), unique=True, nullable=False)
 
-    applications = relationship("Application", back_populates="car_brand")
+    cars = relationship("Car", back_populates="car_brand")
+
     class Config:
         orm_mode = True
 
 class EngineVolume(Base):
-    __tablename__ = "engine_vol"  # Объем двигателя
+    __tablename__ = "engine_vol"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(Float, unique=True, nullable=False)
 
-    applications = relationship("Application", back_populates="engine_vol")
+    cars = relationship("Car", back_populates="engine_vol")
+
     class Config:
         orm_mode = True
+
+class Car(Base):
+    __tablename__ = "car"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=False)
+    brand_id = Column(UUID(as_uuid=True), ForeignKey("car_brand.id"), nullable=False)
+    model = Column(String(255), nullable=False)
+    year = Column(Integer, nullable=False)
+    engine_volume = Column(UUID(as_uuid=True), ForeignKey("engine_vol.id"), nullable=False)
+    transmission_type_id = Column(UUID(as_uuid=True), ForeignKey("transmission_types.id"), nullable=False)
+    vin_code = Column(String(17), nullable=False, unique=True)
+
+    user = relationship("User", back_populates="cars", cascade="all", single_parent=True)
+    car_brand = relationship("CarBrand", back_populates="cars", cascade="all", single_parent=True)
+    engine_vol = relationship("EngineVolume", back_populates="cars", cascade="all", single_parent=True)
+    transmission_type = relationship("TransmissionType", back_populates="cars", cascade="all", single_parent=True)
+    applications = relationship("Application", back_populates="car", cascade="all", single_parent=True)
+
 
 
 class Application(Base):
     __tablename__ = "application"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=False)
-    brand_id = Column(UUID(as_uuid=True), ForeignKey("car_brand.id"), nullable=False)
-    model = Column(String(255), nullable=False)  # Модель автомобиля
-    year = Column(Integer, nullable=False)  # Год выпуска
-    engine_volume = Column(UUID(as_uuid=True), ForeignKey("engine_vol.id"), nullable=False)  # Объем двигателя
-    transmission_type_id = Column(UUID(as_uuid=True), ForeignKey("transmission_types.id"), nullable=False)  # Ссылка на тип коробки передач
-    vin_code = Column(String(17), nullable=False)  # VIN-код
+    car_id = Column(UUID(as_uuid=True), ForeignKey("car.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"), nullable=False) 
+    problem = Column(String, nullable=False)
 
-    # Связи с другими таблицами
-    user = relationship("User", back_populates="applications")
-    transmission_type = relationship("TransmissionType", back_populates="applications")
-    car_brand = relationship("CarBrand", back_populates="applications")
-    engine_vol = relationship("EngineVolume", back_populates="applications")
+    car = relationship("Car", back_populates="applications")
+    user = relationship("User", back_populates="applications")  
+
     class Config:
-            orm_mode = True
+        orm_mode = True
