@@ -79,7 +79,6 @@ class Car(Base):
     applications = relationship("Application", back_populates="car", cascade="all", single_parent=True)
 
 
-
 class Application(Base):
     __tablename__ = "application"
 

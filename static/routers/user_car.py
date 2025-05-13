@@ -10,6 +10,8 @@ from fastapi.security import OAuth2PasswordBearer
 from static.template.token import decryptToken
 from models import User
 from database.database_app import get_session
+from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload
 
 class CarCreateRequest(BaseModel):
     user_id: UUID
@@ -29,9 +31,52 @@ class CarUpdateRequest(BaseModel):
     vin_code: Optional[str]
 
 
+
+class TransmissionTypeOut(BaseModel):
+    id: UUID
+    name: str
+
+    class Config:
+        orm_mode = True
+
+class CarBrandOut(BaseModel):
+    id: UUID
+    name: str
+
+    class Config:
+        orm_mode = True
+
+class EngineVolumeOut(BaseModel):
+    id: UUID
+    name: float
+
+    class Config:
+        orm_mode = True
+
+class UserOut(BaseModel):
+    id: UUID
+    email: str
+
+    class Config:
+        orm_mode = True
+
+class CarOut(BaseModel):
+    id: UUID
+    model: str
+    vin_code: str
+    year: int
+    user: UserOut
+    car_brand: CarBrandOut
+    engine_vol: EngineVolumeOut
+    transmission_type: TransmissionTypeOut
+
+    class Config:
+        orm_mode = True
+        allow_population_by_field_name = True
+
 async def create_car(db: AsyncSession, car_data: CarCreateRequest, current_user_id: UUID) -> Car:
-    if car_data.user_id != current_user_id:
-        raise HTTPException(status_code=403, detail="Недостаточно прав для создания этого автомобиля.")
+    # if car_data.user_id != current_user_id:
+    #     raise HTTPException(status_code=403, detail="Недостаточно прав для создания этого автомобиля.")
     car = Car(**car_data.dict())
     db.add(car)
     await db.commit()
@@ -40,8 +85,18 @@ async def create_car(db: AsyncSession, car_data: CarCreateRequest, current_user_
 
 
 async def get_car(db: AsyncSession, car_id: UUID) -> Optional[Car]:
-    result = await db.execute(select(Car).filter(Car.id == car_id))
-    return result.scalar_one_or_none()
+    result = await db.execute(
+        select(Car)
+        .where(Car.id == car_id)
+        .options(
+            joinedload(Car.user),
+            joinedload(Car.car_brand),
+            joinedload(Car.engine_vol),
+            joinedload(Car.transmission_type)
+        )
+    )
+    car = result.unique().scalar_one_or_none()
+    return car
 
 async def get_all_cars(db: AsyncSession, current_user_id: UUID) -> list[Car]:
     result = await db.execute(select(Car).filter(Car.user_id == current_user_id))
@@ -137,19 +192,13 @@ async def delete_car_route(
     raise HTTPException(status_code=404, detail="Автомобиль не найден")
 
 
-
-@router.get("/{car_id}", summary="Получить автомобиль по ID")
-async def get_car_route(
-    car_id: UUID,
-    session: AsyncSession = Depends(get_session),
-    token: str = Depends(oauth2_scheme)
-):
-    await verify_token_and_user(token, session)
+@router.get("/{car_id}", response_model=CarOut)
+async def get_car_route(car_id: UUID, session: AsyncSession = Depends(get_session)):
     car = await get_car(session, car_id)
+    if not car:
+        raise HTTPException(status_code=404, detail="Автомобиль не найден")
     if car:
         return {"message": "Автомобиль найден", "data": car}
-    raise HTTPException(status_code=404, detail="Автомобиль не найден")
-
 
 @router.get("/", summary="Получить все личные автомобили")
 async def get_all_cars_route(

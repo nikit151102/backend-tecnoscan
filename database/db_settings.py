@@ -13,19 +13,19 @@ class Settings:
     POSTGRES_PORT: str
     POSTGRES_DB: str
 
-# settings = Settings()
-# settings.POSTGRES_HOST = 'db'  
-# settings.POSTGRES_PORT = 5432
-# settings.POSTGRES_PASSWORD = 'root'
-# settings.POSTGRES_USER = 'root' 
-# settings.POSTGRES_DB = 'tecnoscan'
-    
 settings = Settings()
-settings.POSTGRES_HOST = 'localhost' 
+settings.POSTGRES_HOST = 'db'  
 settings.POSTGRES_PORT = 5432
-settings.POSTGRES_PASSWORD = 'nikit5090'
-settings.POSTGRES_USER = 'postgres' 
-settings.POSTGRES_DB = 'test'
+settings.POSTGRES_PASSWORD = 'root'
+settings.POSTGRES_USER = 'root' 
+settings.POSTGRES_DB = 'tecnoscan'
+    
+# settings = Settings()
+# settings.POSTGRES_HOST = 'localhost' 
+# settings.POSTGRES_PORT = 5432
+# settings.POSTGRES_PASSWORD = 'nikit5090'
+# settings.POSTGRES_USER = 'postgres' 
+# settings.POSTGRES_DB = 'test'
 
 
 settings.POSTGRES_DATABASE_URLA = f"postgresql+asyncpg://" \
